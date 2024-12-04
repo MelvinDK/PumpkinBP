@@ -78,12 +78,55 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             context.set_upper_bound(&self.loads[j], potential_sum, PropositionalConjunction::new(reasons))?;
         }
 
-
         // Rule 3.
         // Lower bound of load in bin j >= total size of all items - sum of upper bounds of loads in all other bins
+        let total_size: i32 = self.sizes
+            .iter()
+            .sum();
+        let total_upper_bounds: i32 = self.loads
+            .iter()
+            .map(|l| context.upper_bound(l))
+            .sum();
+        let mut reasons = Vec::new();
+        for load in self.loads.iter() {
+            reasons.push(predicate![load >= context.lower_bound(load)]);
+        }
+
+        for (idx, bin) in self.bins.iter().enumerate() {
+            let lower_bound = total_size - total_upper_bounds + context.upper_bound(bin);
+            let filtered_reasons = reasons
+                .iter()
+                .enumerate()
+                .filter(|&(i, _)| i != idx)
+                .map(|(_, &load)| load)
+                .collect();
+
+            context.set_lower_bound(bin, lower_bound, PropositionalConjunction::new(filtered_reasons))?;
+        }
 
         // Rule 4.
         // Upper bound of load in bin j <= total size of all items - sum of lower bounds of loads in all other bins
+        let total_lower_bounds: i32 = self.loads
+            .iter()
+            .map(|l| context.lower_bound(l))
+            .sum();
+        let mut reasons = Vec::new();
+        for load in self.loads.iter() {
+            reasons.push(predicate![load <= context.upper_bound(load)]);
+        }
+
+        for (idx, bin) in self.bins.iter().enumerate() {
+            let upper_bound = total_size - total_lower_bounds + context.lower_bound(bin);
+            let filtered_reasons = reasons
+                .iter()
+                .enumerate()
+                .filter(|&(i, _)| i != idx)
+                .map(|(_, &load)| load)
+                .collect();
+
+            context.set_upper_bound(bin, upper_bound, PropositionalConjunction::new(filtered_reasons))?;
+        }
+
 
         // Rule 5.
         // If adding an item to a bin would exceed the upper bound of that bin, it is eliminated

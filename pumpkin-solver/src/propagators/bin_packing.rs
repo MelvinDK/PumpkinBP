@@ -92,16 +92,16 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             reasons.push(predicate![load >= context.lower_bound(load)]);
         }
 
-        for (idx, bin) in self.bins.iter().enumerate() {
-            let lower_bound = total_size - total_upper_bounds + context.upper_bound(bin);
+        for (idx, load) in self.loads.iter().enumerate() {
+            let lower_bound = total_size - total_upper_bounds + context.upper_bound(load);
             let filtered_reasons = reasons
                 .iter()
                 .enumerate()
                 .filter(|&(i, _)| i != idx)
-                .map(|(_, &load)| load)
+                .map(|(_, &val)| val)
                 .collect();
 
-            context.set_lower_bound(bin, lower_bound, PropositionalConjunction::new(filtered_reasons))?;
+            context.set_lower_bound(load, lower_bound, PropositionalConjunction::new(filtered_reasons))?;
         }
 
         // Rule 4.
@@ -115,21 +115,50 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             reasons.push(predicate![load <= context.upper_bound(load)]);
         }
 
-        for (idx, bin) in self.bins.iter().enumerate() {
-            let upper_bound = total_size - total_lower_bounds + context.lower_bound(bin);
+        for (idx, load) in self.loads.iter().enumerate() {
+            let upper_bound = total_size - total_lower_bounds + context.lower_bound(load);
             let filtered_reasons = reasons
                 .iter()
                 .enumerate()
                 .filter(|&(i, _)| i != idx)
-                .map(|(_, &load)| load)
+                .map(|(_, &val)| val)
                 .collect();
 
-            context.set_upper_bound(bin, upper_bound, PropositionalConjunction::new(filtered_reasons))?;
+            context.set_upper_bound(load, upper_bound, PropositionalConjunction::new(filtered_reasons))?;
         }
-
 
         // Rule 5.
         // If adding an item to a bin would exceed the upper bound of that bin, it is eliminated
+        for j in 0..bin_count {
+            let mut packed_sum = 0;
+            let mut reasons = Vec::new();
+        
+            self.bins
+                .iter()
+                .enumerate()
+                .filter(|(_, bin)| context.is_fixed(*bin) && context.lower_bound(*bin) == j as i32)
+                .for_each(|(idx, bin)| {
+                    // Accumulate the size of items already packed in bin j
+                    packed_sum += self.sizes[idx];
+
+                    // Collect reasons for the lower bound
+                    reasons.push(predicate![bin == j as i32]);
+                });
+        
+            let remaining_space = context.upper_bound(&self.loads[j]) - packed_sum;
+
+            let to_remove: Vec<&ElementVar> = self.bins
+                .iter()
+                .enumerate()
+                .filter(|(idx, bin)| !context.is_fixed(*bin) && context.contains(*bin, j as i32) && self.sizes[*idx] > remaining_space)
+                .map(|(_, val)| val)
+                .collect();
+
+            to_remove.iter()
+                .for_each(|bin| {
+                    context.remove(*bin, j as i32, PropositionalConjunction::new(reasons.clone()));
+                });
+        }
 
         // Rule 6.
         // If item allocation cannot exceed a bin's lower bound without one of the candidate items, that candidate item must be committed to that bin

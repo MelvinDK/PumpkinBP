@@ -47,7 +47,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
                 .enumerate()
                 .filter(|(_, bin)| context.is_fixed(*bin) && context.lower_bound(*bin) == j as i32)
                 .for_each(|(idx, bin)| {
-                    // Accumulate the size of items packed in bin `j`
+                    // Accumulate the size of items already packed in bin j
                     packed_sum += self.sizes[idx];
 
                     // Collect reasons for the lower bound
@@ -57,18 +57,27 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             context.set_lower_bound(&self.loads[j], packed_sum, PropositionalConjunction::new(reasons))?;
         }
 
-        // let mut lbs = vec![0; bin_count];
-        // self.bins
-        //     .iter()
-        //     .enumerate()
-        //     .filter(|(_, bin)| context.is_fixed(*bin))
-        //     .for_each(|(idx, bin)| {
-        //         let j = context.lower_bound(bin);
-        //         lbs[j as usize] += self.sizes[idx];
-        //     });
-
         // Rule 2.
         // Upper bound of load in bin j <= total item size of possible set for bin j
+        for j in 0..bin_count {
+            let mut potential_sum = 0;
+            let mut reasons = Vec::new();
+        
+            self.bins
+                .iter()
+                .enumerate()
+                .filter(|(_, bin)| context.contains(*bin, j as i32))
+                .for_each(|(idx, bin)| {
+                    // Accumulate the size of items that could be packed in bin j
+                    potential_sum += self.sizes[idx];
+
+                    // Collect reasons for the upper bound
+                    reasons.push(predicate![bin == j as i32]);
+                });
+        
+            context.set_upper_bound(&self.loads[j], potential_sum, PropositionalConjunction::new(reasons))?;
+        }
+
 
         // Rule 3.
         // Lower bound of load in bin j >= total size of all items - sum of upper bounds of loads in all other bins

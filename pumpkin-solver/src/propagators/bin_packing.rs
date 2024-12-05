@@ -1,7 +1,5 @@
-use itertools::Itertools;
 
 use crate::basic_types::PropagationStatusCP;
-use crate::conjunction;
 use crate::engine::cp::propagation::ReadDomains;
 use crate::engine::propagation::PropagationContextMut;
 use crate::engine::propagation::Propagator;
@@ -34,9 +32,8 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
         mut context: PropagationContextMut,
     ) -> PropagationStatusCP {
         let bin_count = self.loads.len();
-        let item_count = self.bins.len();
 
-        // Rule 1.
+        // Lower Load Mainentance.
         // Lower bound of load in bin j >= total item size in bin j
         for j in 0..bin_count {
             let mut packed_sum = 0;
@@ -57,7 +54,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             context.set_lower_bound(&self.loads[j], packed_sum, PropositionalConjunction::new(reasons))?;
         }
 
-        // Rule 2.
+        // Upper Load Maintenance.
         // Upper bound of load in bin j <= total item size of possible set for bin j
         for j in 0..bin_count {
             let mut potential_sum = 0;
@@ -78,7 +75,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             context.set_upper_bound(&self.loads[j], potential_sum, PropositionalConjunction::new(reasons))?;
         }
 
-        // Rule 3.
+        // Lower Load and Size Coherence.
         // Lower bound of load in bin j >= total size of all items - sum of upper bounds of loads in all other bins
         let total_size: i32 = self.sizes
             .iter()
@@ -104,7 +101,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             context.set_lower_bound(load, lower_bound, PropositionalConjunction::new(filtered_reasons))?;
         }
 
-        // Rule 4.
+        // Upper Load and Size Coherence.
         // Upper bound of load in bin j <= total size of all items - sum of lower bounds of loads in all other bins
         let total_lower_bounds: i32 = self.loads
             .iter()
@@ -127,7 +124,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             context.set_upper_bound(load, upper_bound, PropositionalConjunction::new(filtered_reasons))?;
         }
 
-        // Rule 5.
+        // Single Item Elimination.
         // If adding an item to a bin would exceed the upper bound of that bin, it is eliminated
         for j in 0..bin_count {
             let mut packed_sum = 0;
@@ -141,7 +138,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
                     // Accumulate the size of items already packed in bin j
                     packed_sum += self.sizes[idx];
 
-                    // Collect reasons for the lower bound
+                    // Collect reasons for the removal
                     reasons.push(predicate![bin == j as i32]);
                 });
         
@@ -154,14 +151,47 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
                 .map(|(_, val)| val)
                 .collect();
 
-            to_remove.iter()
-                .for_each(|bin| {
-                    context.remove(*bin, j as i32, PropositionalConjunction::new(reasons.clone()));
-                });
+            for bin in to_remove.iter() {
+                context.remove(*bin, j as i32, PropositionalConjunction::new(reasons.clone()))?;
+            }
         }
 
-        // Rule 6.
+        // Single Item Commitment.
         // If item allocation cannot exceed a bin's lower bound without one of the candidate items, that candidate item must be committed to that bin
+        for j in 0..bin_count {
+            let candidates: Vec<(usize, &ElementVar)> = self.bins
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| !context.is_fixed(*item) && context.contains(*item, j as i32))
+                .collect();
+
+            let total_size: i32 = self.bins
+                .iter()
+                .enumerate()
+                .filter(|(_, bin)| context.contains(*bin, j as i32))
+                .map(|(idx, _)| self.sizes[idx])
+                .sum();
+            
+            let mut reason = Vec::new();
+            self.bins
+                .iter()
+                .filter(|bin| context.is_fixed(*bin))
+                .for_each(|bin| {
+                    if context.lower_bound(bin) == j as i32 {
+                        reason.push(predicate![bin == j as i32]);
+                    } else {
+                        reason.push(predicate![bin != j as i32]);
+                    }
+                });
+
+            for c in 0..candidates.len() {
+                let (i, candidate) = candidates[c];
+                if total_size - self.sizes[i] < context.lower_bound(&self.loads[j]) {
+                    context.post_predicate(predicate![candidate == j as i32], PropositionalConjunction::new(reason))?;
+                }
+            }
+        }
+
 
         Ok(())
     }

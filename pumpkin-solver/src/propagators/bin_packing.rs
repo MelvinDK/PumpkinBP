@@ -93,7 +93,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
                 .enumerate()
                 // Filter items that still have bin j in their assignment domain, including items already packed (possible set Pj)
                 .filter(|(_, bin)| context.contains(*bin, j as i32))
-                .for_each(|(idx, bin)| {
+                .for_each(|(idx, _)| {
                     // Accumulate the size of items that could be packed in bin j
                     potential_sum += self.sizes[idx];
                 });

@@ -24,6 +24,7 @@
 
 mod all_different;
 mod arithmetic;
+mod bin_packing;
 mod boolean;
 mod clause;
 mod constraint_poster;
@@ -34,6 +35,7 @@ use std::num::NonZero;
 
 pub use all_different::*;
 pub use arithmetic::*;
+pub use bin_packing::*;
 pub use boolean::*;
 pub use clause::*;
 pub use constraint_poster::*;

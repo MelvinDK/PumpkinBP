@@ -1,8 +1,10 @@
-
 use crate::basic_types::PropagationStatusCP;
 use crate::engine::cp::propagation::ReadDomains;
+use crate::engine::propagation::LocalId;
 use crate::engine::propagation::PropagationContextMut;
 use crate::engine::propagation::Propagator;
+use crate::engine::propagation::PropagatorInitialisationContext;
+use crate::engine::DomainEvents;
 use crate::predicates::Predicate;
 use crate::predicates::PropositionalConjunction;
 use crate::variables::IntegerVariable;
@@ -24,6 +26,31 @@ impl<ElementVar: IntegerVariable> BinPackingPropagator<ElementVar> {
 impl<ElementVar: IntegerVariable + 'static> Propagator
     for BinPackingPropagator<ElementVar>
 {
+    fn initialise_at_root(
+        &mut self,
+        context: &mut PropagatorInitialisationContext,
+    ) -> Result<(), PropositionalConjunction> {
+        self.loads
+            .iter()
+            .cloned()
+            .enumerate()
+            .for_each(|(idx, load)| {
+                let _ =
+                    context.register(load.clone(), DomainEvents::ANY_INT, LocalId::from(idx as u32));
+            });
+
+        self.bins
+            .iter()
+            .cloned()
+            .enumerate()
+            .for_each(|(idx, bin)| {
+                let _ =
+                    context.register(bin.clone(), DomainEvents::ANY_INT, LocalId::from((self.loads.len() + idx) as u32));
+            });
+
+        Ok(())
+    }
+
     fn name(&self) -> &str {
         "Bin Packing"
     }

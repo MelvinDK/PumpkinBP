@@ -250,7 +250,6 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             self.bins
                 .iter()
                 .filter(|bin| !context.contains(*bin, j as i32))
-                .map(|bin| predicate![bin != j as i32])
                 .for_each(|bin| {
                     reason.push(predicate![bin != j as i32]);
                 });

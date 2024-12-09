@@ -1,4 +1,6 @@
+use crate::basic_types::Inconsistency;
 use crate::basic_types::PropagationStatusCP;
+#[cfg(test)]
 use crate::conjunction;
 use crate::engine::cp::propagation::ReadDomains;
 use crate::engine::propagation::LocalId;
@@ -13,14 +15,28 @@ use crate::predicate;
 
 #[derive(Clone, Debug)]
 pub(crate) struct BinPackingPropagator<ElementVar> {
+    // Load of each bin
     loads: Box<[ElementVar]>,
+    // Bin allocation for each item
     bins: Box<[ElementVar]>,
+    // Size of each item
     sizes: Box<[i32]>,
 }
 
 impl<ElementVar: IntegerVariable> BinPackingPropagator<ElementVar> {
     pub(crate) fn new(loads: Box<[ElementVar]>, bins: Box<[ElementVar]>, sizes: Box<[i32]>) -> Self {
-        BinPackingPropagator { loads, bins, sizes }
+        // TODO: CHECK IF ARRAY SIZES ARE THE SAME
+
+        // Sort items (bins and sizes) in non-increasing size
+        let mut sorted_zip: Vec<_> = bins.into_vec().into_iter().zip(sizes.into_vec()).collect();
+        sorted_zip.sort_unstable_by(|(_, size_a), (_, size_b)| size_b.cmp(size_a));
+        let (sorted_bins, sorted_sizes): (Vec<_>, Vec<_>) = sorted_zip.into_iter().unzip();
+
+        BinPackingPropagator {
+            loads,
+            bins: sorted_bins.into_boxed_slice(),
+            sizes: sorted_sizes.into_boxed_slice(),
+        }
     }
 }
 
@@ -31,8 +47,6 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
         &mut self,
         context: &mut PropagatorInitialisationContext,
     ) -> Result<(), PropositionalConjunction> {
-        // CHECK IF ARRAY SIZES ARE THE SAME
-
         self.loads
             .iter()
             .cloned()
@@ -265,8 +279,97 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             }
         }
 
+        // NoSum Pruning
+        // Read "A Constraint for Bin Packing" by Paul Shaw for details
+        for j in 0..bin_count {
+            // Candidate set Cj
+            let candidates: Vec<(usize, &ElementVar)> = self.bins
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| !context.is_fixed(*item) && context.contains(*item, j as i32))
+                .collect();
+
+            // Sizes of the candidate items
+            let sizes: Vec<i32> = candidates
+                .iter()
+                .map(|(idx, _)| self.sizes[*idx])
+                .collect();
+
+            let packed: i32 = self.bins
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| context.is_fixed(*item) && context.lower_bound(*item) == j as i32)
+                .map(|(idx, _)| self.sizes[idx])
+                .sum();
+
+            // If nosum returns true, prune
+            if nosum(&sizes, context.lower_bound(&self.loads[j]) - packed, context.upper_bound(&self.loads[j]) - packed) {
+                // The bounds of the loads of bin j are part of the reason
+                let mut reason = Vec::from([predicate![self.loads[j] >= context.lower_bound(&self.loads[j])], predicate![self.loads[j] <= context.upper_bound(&self.loads[j])]]);
+
+                // Every item packed in bin j are part of the reason
+                self.bins
+                    .iter()
+                    .filter(|item| context.is_fixed(*item) && context.lower_bound(*item) == j as i32)
+                    .for_each(|item| reason.push(predicate![item == j as i32]));
+
+                // Every item without bin j in its domain describes the candidate set Cj, also part of the reason
+                self.bins
+                    .iter()
+                    .filter(|item| !context.contains(*item, j as i32))
+                    .for_each(|item| {
+                        reason.push(predicate![item != j as i32]);
+                    });
+
+                return Err(Inconsistency::Conflict(PropositionalConjunction::new(reason)));
+            }
+        }
+
         Ok(())
     }
+}
+
+// Original algorithm is 1-indexed so this makes indexing kind of annoying
+fn nosum(
+    sizes: &[i32],
+    lower_bound: i32,
+    upper_bound: i32
+) -> bool {
+    if lower_bound <= 0 || upper_bound >= sizes.iter().sum() {
+        return false
+    }
+    
+    let length = sizes.len();
+    let mut sum_a = 0;
+    let mut sum_c = 0;
+    let mut k1 = 0;
+    let mut k2 = 0;
+    
+    while sum_c + sizes[length - k2 - 1] < lower_bound {
+        sum_c += sizes[length - k2 - 1];
+        k2 += 1;
+    }
+
+    let mut sum_b = sizes[length - k2 - 1];
+
+    while sum_a < lower_bound && sum_b <= upper_bound {
+        k1 += 1;
+        sum_a += sizes[k1 - 1];
+
+        if sum_a < lower_bound {
+            k2 -= 1;
+            sum_b += sizes[length - k2 - 1];
+            sum_c -= sizes[length - k2 - 1];
+
+            while sum_a + sum_c >= lower_bound {
+                k2 -= 1;
+                sum_c -= sizes[length - k2 - 1];
+                sum_b += sizes[length - k2 - 1] - sizes[length - k2 - k1 - 2];
+            }
+        }
+    }
+
+    sum_a < lower_bound
 }
 
 #[cfg(test)]

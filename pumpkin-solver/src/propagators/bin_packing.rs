@@ -1,4 +1,5 @@
 use crate::basic_types::PropagationStatusCP;
+use crate::conjunction;
 use crate::engine::cp::propagation::ReadDomains;
 use crate::engine::propagation::LocalId;
 use crate::engine::propagation::PropagationContextMut;
@@ -84,7 +85,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
         
             context.set_lower_bound(&self.loads[j], packed_sum, PropositionalConjunction::new(reason))?;
         }
-
+        
         // Upper Load Maintenance.
         // Upper bound of load in bin j <= total item size of possible set for bin j
         for j in 0..bin_count {
@@ -129,7 +130,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             .iter()
             .map(|load| context.upper_bound(load))
             .sum();
-
+            
         // Collect all upper bounds as a reason
         let reason: Vec<Predicate> = self.loads
             .iter()
@@ -160,7 +161,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
         // Collect all lower bounds as a reason
         let reason: Vec<Predicate> = self.loads
             .iter()
-            .map(|load| predicate![load <= context.lower_bound(load)])
+            .map(|load| predicate![load >= context.lower_bound(load)])
             .collect();
 
         for (idx, load) in self.loads.iter().enumerate() {
@@ -201,7 +202,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             // Remaining space in bin j is its upper bound - the sizes of items already packed in bin j
             let remaining_space = context.upper_bound(&self.loads[j]) - packed_sum;
 
-            // Collect every bin that can no longer be packed in bin j
+            // Collect every item that can no longer be packed in bin j
             let to_remove: Vec<&ElementVar> = self.bins
                 .iter()
                 .enumerate()
@@ -264,7 +265,117 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             }
         }
 
-
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::test_solver::TestSolver;
+
+    #[test]
+    fn load_maintenance() {
+        let mut solver = TestSolver::default();
+
+        let load1 = solver.new_variable(0, 10);
+        let load2 = solver.new_variable(0, 10);
+        let load3 = solver.new_variable(0, 10);
+
+        let item1 = solver.new_variable(0, 0);
+        let item2 = solver.new_variable(0, 0);
+        let item3 = solver.new_variable(1, 1);
+        let item4 = solver.new_variable(1, 2);
+
+        let sizes = [2,3,4,5];
+
+        let _ = solver
+            .new_propagator(BinPackingPropagator::new([load1, load2, load3].into(), [item1, item2, item3, item4].into(), sizes.into()))
+            .expect("no empty domain");
+
+        solver.assert_bounds(load1, 5, 5);
+        solver.assert_bounds(load2, 4, 9);
+        solver.assert_bounds(load3, 0, 5);
+
+        let reason_lower_1 = solver.get_reason_int(predicate![load1 >= 5]);
+        assert_eq!(conjunction!([item1 == 0] & [item2 == 0]), reason_lower_1);
+
+        let reason_upper_1 = solver.get_reason_int(predicate![load1 <= 5]);
+        assert_eq!(conjunction!([item1 == 0] & [item2 == 0] & [item3 != 0] & [item4 != 0]), reason_upper_1);
+
+        let reason_lower_2 = solver.get_reason_int(predicate![load2 >= 4]);
+        assert_eq!(conjunction!([item3 == 1]), reason_lower_2);
+
+        let reason_upper_2 = solver.get_reason_int(predicate![load2 <= 9]);
+        assert_eq!(conjunction!([item3 == 1] & [item1 != 1] & [item2 != 1]), reason_upper_2);
+
+        let reason_upper_3 = solver.get_reason_int(predicate![load3 <= 5]);
+        assert_eq!(conjunction!([item1 != 2] & [item2 != 2] & [item3 != 2]), reason_upper_3);
+    }
+
+    #[test]
+    fn load_and_size_coherence() {
+        let mut solver = TestSolver::default();
+
+        let load1 = solver.new_variable(4, 5);
+        let load2 = solver.new_variable(11, 13);
+        let load3 = solver.new_variable(3, 9);
+
+        let item1 = solver.new_variable(0, 2);
+        let item2 = solver.new_variable(0, 2);
+        let item3 = solver.new_variable(0, 2);
+        let item4 = solver.new_variable(0, 2);
+
+        let sizes = [4,5,6,7];
+
+        let _ = solver
+            .new_propagator(BinPackingPropagator::new([load1, load2, load3].into(), [item1, item2, item3, item4].into(), sizes.into()))
+            .expect("no empty domain");
+
+        solver.assert_bounds(load1, 4, 5);
+        solver.assert_bounds(load2, 11, 13);
+        solver.assert_bounds(load3, 4, 7); // only one with changed bounds
+
+        let reason_lower = solver.get_reason_int(predicate![load3 >= 4]);
+        assert_eq!(conjunction!([load1 <= 5] & [load2 <= 13]), reason_lower);
+
+        let reason_upper = solver.get_reason_int(predicate![load3 <= 7]);
+        assert_eq!(conjunction!([load1 >= 4] & [load2 >= 11]), reason_upper);
+    }
+
+    #[test]
+    fn elimination_and_commitment() {
+        let mut solver = TestSolver::default();
+
+        let load1 = solver.new_variable(0, 2);
+        let load2 = solver.new_variable(0, 100);
+        let load3 = solver.new_variable(8, 10);
+        let load4 = solver.new_variable(0, 100);
+
+        let item1 = solver.new_variable(0, 3);
+        let item2 = solver.new_variable(0, 3);
+        let item3 = solver.new_variable(0, 3);
+        let item4 = solver.new_variable(0, 3);
+        let item5 = solver.new_variable(0, 3);
+
+        let sizes = [1,2,3,5,50];
+
+        let _ = solver
+            .new_propagator(BinPackingPropagator::new([load1, load2, load3, load4].into(), [item1, item2, item3, item4, item5].into(), sizes.into()))
+            .expect("no empty domain");
+
+        solver.assert_bounds(item1, 0, 3);
+        solver.assert_bounds(item2, 0, 3);
+        solver.assert_bounds(item3, 1, 3);
+        solver.assert_bounds(item4, 2, 2);
+
+        let reason3 = solver.get_reason_int(predicate![item3 != 0]);
+        assert_eq!(conjunction!([load1 <= 2]), reason3);
+
+        // For some reason it can't find a reason for predicate [item4 == 2], so we'll just check the bounds
+        let reason4 = solver.get_reason_int(predicate![item4 >= 2]);
+        let reason4_alt = solver.get_reason_int(predicate![item4 <= 2]);
+        assert_eq!(reason4_alt, reason4);
+        assert_eq!(conjunction!([load3 >= 8] & [item5 != 2]), reason4);
     }
 }

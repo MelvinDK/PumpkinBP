@@ -30,6 +30,8 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
         &mut self,
         context: &mut PropagatorInitialisationContext,
     ) -> Result<(), PropositionalConjunction> {
+        // CHECK IF ARRAY SIZES ARE THE SAME
+
         self.loads
             .iter()
             .cloned()

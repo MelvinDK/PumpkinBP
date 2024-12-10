@@ -295,6 +295,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
                 .map(|(idx, _)| self.sizes[*idx])
                 .collect();
 
+            // Total size of items packed in bin j
             let packed: i32 = self.bins
                 .iter()
                 .enumerate()
@@ -341,6 +342,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
                 .map(|(idx, _)| self.sizes[*idx])
                 .collect();
 
+            // Total size of items packed in bin j
             let packed: i32 = self.bins
                 .iter()
                 .enumerate()
@@ -396,6 +398,88 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
         }
 
         // NoSum Item Elimination and Commitment
+        for j in 0..bin_count {
+            // Candidate set Cj
+            let candidates: Vec<(usize, &ElementVar)> = self.bins
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| !context.is_fixed(*item) && context.contains(*item, j as i32))
+                .collect();
+
+            // Sizes of the candidate items
+            let sizes: Vec<i32> = candidates
+                .iter()
+                .map(|(idx, _)| self.sizes[*idx])
+                .collect();
+
+            // Total size of items packed in bin j
+            let packed: i32 = self.bins
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| context.is_fixed(*item) && context.lower_bound(*item) == j as i32)
+                .map(|(idx, _)| self.sizes[idx])
+                .sum();
+
+            for c in 0..candidates.len() {
+                // Sizes of the candidates - current candidate
+                let current_sizes: Vec<i32> = sizes
+                    .iter()
+                    .enumerate()
+                    .filter(|(idx, _)| *idx != c)
+                    .map(|(_, val)| *val)
+                    .collect();
+
+                // If item has to be eliminated
+                let (eliminate, _, _) = nosum(&current_sizes, context.lower_bound(&self.loads[j]) - packed - sizes[c], context.upper_bound(&self.loads[j]) - packed - sizes[c]);
+                if eliminate {
+                    // The bounds of the load of bin j are part of the reason
+                    let mut reason = Vec::from([predicate![self.loads[j] >= context.lower_bound(&self.loads[j])], predicate![self.loads[j] <= context.upper_bound(&self.loads[j])]]);
+
+                    // Every item packed in bin j is part of the reason
+                    self.bins
+                        .iter()
+                        .filter(|item| context.is_fixed(*item) && context.lower_bound(*item) == j as i32)
+                        .for_each(|item| reason.push(predicate![item == j as i32]));
+
+                    // Every item without bin j in its domain describes the candidate set Cj, also part of the reason
+                    self.bins
+                        .iter()
+                        .filter(|item| !context.contains(*item, j as i32))
+                        .for_each(|item| {
+                            reason.push(predicate![item != j as i32]);
+                        });
+
+                    // Remove bin j from candidate item domain
+                    context.remove(candidates[c].1, j as i32, PropositionalConjunction::new(reason))?;
+                }
+                
+                // If item has to be committed
+                let (commit, _, _) = nosum(&current_sizes, context.lower_bound(&self.loads[j]) - packed, context.upper_bound(&self.loads[j]) - packed);
+                if commit {
+                    // The bounds of the load of bin j are part of the reason
+                    let mut reason = Vec::from([predicate![self.loads[j] >= context.lower_bound(&self.loads[j])], predicate![self.loads[j] <= context.upper_bound(&self.loads[j])]]);
+
+                    // Every item packed in bin j is part of the reason
+                    self.bins
+                        .iter()
+                        .filter(|item| context.is_fixed(*item) && context.lower_bound(*item) == j as i32)
+                        .for_each(|item| reason.push(predicate![item == j as i32]));
+
+                    // Every item without bin j in its domain describes the candidate set Cj, also part of the reason
+                    self.bins
+                        .iter()
+                        .filter(|item| !context.contains(*item, j as i32))
+                        .for_each(|item| {
+                            reason.push(predicate![item != j as i32]);
+                        });
+
+                    // Assign bin j to candidate item domain
+                    let candidate = candidates[c].1;
+                    context.post_predicate(predicate![candidate == j as i32], PropositionalConjunction::new(reason))?;
+                }
+            }
+        }
+
 
         Ok(())
     }

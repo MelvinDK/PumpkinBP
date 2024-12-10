@@ -280,7 +280,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
         }
 
         // NoSum Pruning
-        // Read "A Constraint for Bin Packing" by Paul Shaw for details
+        // Read "A Constraint for Bin Packing" by Paul Shaw for details on NoSum
         for j in 0..bin_count {
             // Candidate set Cj
             let candidates: Vec<(usize, &ElementVar)> = self.bins
@@ -303,11 +303,12 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
                 .sum();
 
             // If nosum returns true, prune
-            if nosum(&sizes, context.lower_bound(&self.loads[j]) - packed, context.upper_bound(&self.loads[j]) - packed) {
-                // The bounds of the loads of bin j are part of the reason
+            let (prune, _, _) = nosum(&sizes, context.lower_bound(&self.loads[j]) - packed, context.upper_bound(&self.loads[j]) - packed);
+            if prune {
+                // The bounds of the load of bin j are part of the reason
                 let mut reason = Vec::from([predicate![self.loads[j] >= context.lower_bound(&self.loads[j])], predicate![self.loads[j] <= context.upper_bound(&self.loads[j])]]);
 
-                // Every item packed in bin j are part of the reason
+                // Every item packed in bin j is part of the reason
                 self.bins
                     .iter()
                     .filter(|item| context.is_fixed(*item) && context.lower_bound(*item) == j as i32)
@@ -325,18 +326,91 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             }
         }
 
+        // NoSum Load Bound Tightening
+        for j in 0..bin_count {
+            // Candidate set Cj
+            let candidates: Vec<(usize, &ElementVar)> = self.bins
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| !context.is_fixed(*item) && context.contains(*item, j as i32))
+                .collect();
+
+            // Sizes of the candidate items
+            let sizes: Vec<i32> = candidates
+                .iter()
+                .map(|(idx, _)| self.sizes[*idx])
+                .collect();
+
+            let packed: i32 = self.bins
+                .iter()
+                .enumerate()
+                .filter(|(_, item)| context.is_fixed(*item) && context.lower_bound(*item) == j as i32)
+                .map(|(idx, _)| self.sizes[idx])
+                .sum();
+
+            // If nosum returns true with only lower bound inputs, adjust the lower bound
+            let (adjust, _, b) = nosum(&sizes, context.lower_bound(&self.loads[j]) - packed, context.lower_bound(&self.loads[j]) - packed);
+            if adjust {
+                // The lower bound of the load of bin j is part of the reason
+                let mut reason = Vec::from([predicate![self.loads[j] >= context.lower_bound(&self.loads[j])]]);
+
+                // Every item packed in bin j is part of the reason
+                self.bins
+                    .iter()
+                    .filter(|item| context.is_fixed(*item) && context.lower_bound(*item) == j as i32)
+                    .for_each(|item| reason.push(predicate![item == j as i32]));
+
+                // Every item without bin j in its domain describes the candidate set Cj, also part of the reason
+                self.bins
+                    .iter()
+                    .filter(|item| !context.contains(*item, j as i32))
+                    .for_each(|item| {
+                        reason.push(predicate![item != j as i32]);
+                    });
+
+                context.set_lower_bound(&self.loads[j], packed + b, PropositionalConjunction::new(reason))?;
+            }
+
+            // If nosum returns true with only upper bound inputs, adjust the upper bound
+            let (adjust, a, _) = nosum(&sizes, context.upper_bound(&self.loads[j]) - packed, context.upper_bound(&self.loads[j]) - packed);
+            if adjust {
+                // The upper bound of the load of bin j is part of the reason
+                let mut reason = Vec::from([predicate![self.loads[j] <= context.upper_bound(&self.loads[j])]]);
+
+                // Every item packed in bin j is part of the reason
+                self.bins
+                    .iter()
+                    .filter(|item| context.is_fixed(*item) && context.lower_bound(*item) == j as i32)
+                    .for_each(|item| reason.push(predicate![item == j as i32]));
+
+                // Every item without bin j in its domain describes the candidate set Cj, also part of the reason
+                self.bins
+                    .iter()
+                    .filter(|item| !context.contains(*item, j as i32))
+                    .for_each(|item| {
+                        reason.push(predicate![item != j as i32]);
+                    });
+
+                context.set_upper_bound(&self.loads[j], packed + a, PropositionalConjunction::new(reason))?;
+            }
+        }
+
+        // NoSum Item Elimination and Commitment
+
         Ok(())
     }
 }
 
+// NoSum algorithm by Paul Shaw
 // Original algorithm is 1-indexed so this makes indexing kind of annoying
 fn nosum(
     sizes: &[i32],
     lower_bound: i32,
     upper_bound: i32
-) -> bool {
+) -> (bool, i32, i32) {
+    // sizes.iter().sum() should be kept track of dynamically for constant time
     if lower_bound <= 0 || upper_bound >= sizes.iter().sum() {
-        return false
+        return (false, 0, 0)
     }
     
     let length = sizes.len();
@@ -369,7 +443,7 @@ fn nosum(
         }
     }
 
-    sum_a < lower_bound
+    (sum_a < lower_bound, sum_a + sum_c, sum_b)
 }
 
 #[cfg(test)]

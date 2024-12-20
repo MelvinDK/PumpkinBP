@@ -841,7 +841,19 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
 
         // WRITE DOWN WHAT NOSUM ITEM COMMITMENT AND ELIMINATION DOESN'T KEEP TRACK OF ANYMORE
 
-
+        println!();
+        for j in 0..bin_count {
+            let bin1load = self.bins
+                .iter()
+                .enumerate()
+                .filter(|(_, b)| context.is_fixed(*b) && context.lower_bound(*b) == j as i32)
+                .map(|(i, _)| self.sizes[i])
+                .sum::<i32>();
+            let lowerbound = context.lower_bound(&self.loads[j]);
+            let upperbound = context.upper_bound(&self.loads[j]);
+            println!("{j}: {bin1load}               ({lowerbound} - {upperbound})");
+        }
+        println!();
 
 
         // Lower bound pruning

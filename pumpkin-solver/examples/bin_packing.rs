@@ -4,6 +4,10 @@ use std::path::PathBuf;
 use clap::Parser;
 use convert_case::Case;
 use drcp_format::Format;
+use pumpkin_solver::branching::branchers::autonomous_search::AutonomousSearch;
+use pumpkin_solver::branching::branchers::independent_variable_value_brancher::IndependentVariableValueBrancher;
+use pumpkin_solver::branching::value_selection::InDomainMin;
+use pumpkin_solver::branching::variable_selection::Smallest;
 use pumpkin_solver::constraints;
 use pumpkin_solver::options::SolverOptions;
 use pumpkin_solver::proof::ProofLog;
@@ -52,9 +56,9 @@ fn main() {
         ..Default::default()
     });
 
-    // let capacity = 1000;
-    // let bin_count = 20;
-    // let mut sizes = vec![273,263,350,366,474,472,268,269,283,466,347,261,255,273,355,262,292,259,258,430,252,287,299,298,419,445,495,350,439,307,320,366,363,275,395,272,254,272,303,450,251,288,274,269,372,473,298,444,366,414,271,275,370,252,351,410,315,361,252,357,];
+    let capacity = 1000;
+    let bin_count = 30;
+    let mut sizes = vec![273,263,350,366,474,472,268,269,283,466,347,261,255,273,355,262,292,259,258,430,252,287,299,298,419,445,495,350,439,307,320,366,363,275,395,272,254,272,303,450,251,288,274,269,372,473,298,444,366,414,271,275,370,252,351,410,315,361,252,357,];
 
     // u120_00
     // let capacity = 150;
@@ -62,9 +66,9 @@ fn main() {
     // let mut sizes = vec![42,69,67,57,93,90,38,36,45,42,33,79,27,57,44,84,86,92,46,38,85,33,82,73,49,70,59,23,57,72,74,69,33,42,28,46,30,64,29,74,41,49,55,98,80,32,25,38,82,30,35,39,57,84,62,50,55,27,30,36,20,78,47,26,45,41,58,98,91,96,73,84,37,93,91,43,73,85,81,79,71,80,76,83,41,78,70,23,42,87,43,84,60,55,49,78,73,62,36,44,94,69,32,96,70,84,58,78,25,80,58,66,83,24,98,60,42,43,43,39];
     
     // u120_08, took about 5 minutes in the original paper, didn't finish in an hour
-    let capacity = 150;
-    let bin_count = 51;
-    let mut sizes = vec![100,22,25,51,95,58,97,30,79,23,53,80,20,65,64,21,26,100,81,98,70,85,92,97,86,71,91,29,63,34,67,23,33,89,94,47,100,37,40,58,73,39,49,79,54,57,98,69,67,49,38,34,96,27,92,82,69,45,69,20,75,97,51,70,29,91,98,77,48,45,43,61,36,82,89,94,26,35,58,58,57,46,44,91,49,52,65,42,33,60,37,57,91,52,95,84,72,75,89,81,67,74,87,60,32,76,85,59,62,39,64,52,88,45,29,88,85,54,40,57];
+    // let capacity = 150;
+    // let bin_count = 51;
+    // let mut sizes = vec![100,22,25,51,95,58,97,30,79,23,53,80,20,65,64,21,26,100,81,98,70,85,92,97,86,71,91,29,63,34,67,23,33,89,94,47,100,37,40,58,73,39,49,79,54,57,98,69,67,49,38,34,96,27,92,82,69,45,69,20,75,97,51,70,29,91,98,77,48,45,43,61,36,82,89,94,26,35,58,58,57,46,44,91,49,52,65,42,33,60,37,57,91,52,95,84,72,75,89,81,67,74,87,60,32,76,85,59,62,39,64,52,88,45,29,88,85,54,40,57];
 
     // u120_19, don't bother, took original paper 15 hours
     // let capacity = 150;
@@ -86,12 +90,12 @@ fn main() {
     sizes.sort_by(|a, b| b.cmp(a));
     let item_count = sizes.len();
 
-    let loads = (0..bin_count)
-        .map(|i| solver.new_named_bounded_integer(0, capacity, format!("load{i}")))
-        .collect::<Vec<_>>();
-
     let bins = (0..item_count)
         .map(|i| solver.new_named_bounded_integer(0, bin_count, format!("item{i}")))
+        .collect::<Vec<_>>();
+
+    let loads = (0..bin_count)
+        .map(|i| solver.new_named_bounded_integer(0, capacity, format!("load{i}")))
         .collect::<Vec<_>>();
 
     let _ = solver
@@ -106,7 +110,13 @@ fn main() {
     //             .add_constraint(constraints::binary_less_than_or_equals(loads[i as usize], loads[(i-1) as usize]));
     //     });
 
-    let mut brancher = solver.default_brancher();
+    let mut brancher = AutonomousSearch::new(
+        IndependentVariableValueBrancher::new(
+            Smallest::new(&bins),
+            InDomainMin,
+    ));
+
+    // let mut brancher = solver.default_brancher();
     match solver.satisfy(&mut brancher, &mut Indefinite) {
         SatisfactionResult::Satisfiable(solution) => {
             for item in 0..item_count {

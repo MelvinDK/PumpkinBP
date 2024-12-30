@@ -7,6 +7,7 @@ use drcp_format::Format;
 use pumpkin_solver::branching::branchers::autonomous_search::AutonomousSearch;
 use pumpkin_solver::branching::branchers::independent_variable_value_brancher::IndependentVariableValueBrancher;
 use pumpkin_solver::branching::value_selection::InDomainMin;
+use pumpkin_solver::branching::variable_selection::InputOrder;
 use pumpkin_solver::branching::variable_selection::Smallest;
 use pumpkin_solver::constraints;
 use pumpkin_solver::options::SolverOptions;
@@ -123,13 +124,13 @@ fn main() {
                 .post();
         });
 
+    // Only branch over the bin assignments, not the loads
     let mut brancher = AutonomousSearch::new(
         IndependentVariableValueBrancher::new(
-            Smallest::new(&bins),
+            InputOrder::new(&bins),
             InDomainMin,
     ));
 
-    // let mut brancher = solver.default_brancher();
     match solver.satisfy(&mut brancher, &mut Indefinite) {
         SatisfactionResult::Satisfiable(solution) => {
             for item in 0..item_count {

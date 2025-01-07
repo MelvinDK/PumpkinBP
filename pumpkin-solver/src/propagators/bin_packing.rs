@@ -841,26 +841,26 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
 
         // WRITE DOWN WHAT NOSUM ITEM COMMITMENT AND ELIMINATION DOESN'T KEEP TRACK OF ANYMORE
 
-        println!();
-        for j in 0..bin_count {
-            let bin1load = self.bins
-                .iter()
-                .enumerate()
-                .filter(|(_, b)| context.is_fixed(*b) && context.lower_bound(*b) == j as i32)
-                .map(|(i, _)| self.sizes[i])
-                .sum::<i32>();
-            let lowerbound = context.lower_bound(&self.loads[j]);
-            let upperbound = context.upper_bound(&self.loads[j]);
-            print!("{j}: {bin1load}               ({lowerbound} - {upperbound})          ");
-            for i in 0..self.bins.len() {
-                if context.contains(&self.bins[i], j as i32) {
-                    let candidate = self.sizes[i];
-                    print!("{candidate},");
-                }
-            }
-            println!();
-        }
-        println!();
+        // println!();
+        // for j in 0..bin_count {
+        //     let bin1load = self.bins
+        //         .iter()
+        //         .enumerate()
+        //         .filter(|(_, b)| context.is_fixed(*b) && context.lower_bound(*b) == j as i32)
+        //         .map(|(i, _)| self.sizes[i])
+        //         .sum::<i32>();
+        //     let lowerbound = context.lower_bound(&self.loads[j]);
+        //     let upperbound = context.upper_bound(&self.loads[j]);
+        //     print!("{j}: {bin1load}               ({lowerbound} - {upperbound})          ");
+        //     for i in 0..self.bins.len() {
+        //         if context.contains(&self.bins[i], j as i32) {
+        //             let candidate = self.sizes[i];
+        //             print!("{candidate},");
+        //         }
+        //     }
+        //     println!();
+        // }
+        // println!();
 
 
         // Lower bound pruning

@@ -38,6 +38,8 @@ pub(crate) fn run(
                     constraints::minimum([a, b], c)
                 })?
             }
+            
+            "pumpkin_bin_packing_load" => compile_bin_packing_load(context, exprs)?,
 
             // We rewrite `array_int_element` to `array_var_int_element`.
             "array_int_element" => compile_array_var_int_element(context, exprs)?,
@@ -271,6 +273,21 @@ fn compile_array_int_minimum(
     let array = context.resolve_integer_variable_array(&exprs[1])?;
 
     Ok(constraints::minimum(array.as_ref().to_owned(), rhs)
+        .post(context.solver, None)
+        .is_ok())
+}
+
+fn compile_bin_packing_load(
+    context: &mut CompilationContext<'_>,
+    exprs: &[flatzinc::Expr],
+) -> Result<bool, FlatZincError> {
+    check_parameters!(exprs, 3, "pumpkin_bin_packing_load");
+
+    let load = context.resolve_integer_variable_array(&exprs[0])?;
+    let bin = context.resolve_integer_variable_array(&exprs[1])?;
+    let w = context.resolve_array_integer_constants(&exprs[2])?;
+
+    Ok(constraints::bin_packing(load.as_ref().to_owned(), bin.as_ref().to_owned(), w.iter().copied())
         .post(context.solver, None)
         .is_ok())
 }

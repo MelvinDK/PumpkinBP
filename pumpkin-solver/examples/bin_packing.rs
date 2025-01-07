@@ -57,20 +57,15 @@ fn main() {
         ..Default::default()
     });
 
-    // t60_00 [impossible with 20?]
-    let capacity = 1000;
-    let bin_count = 21;
-    let mut sizes = vec![273,263,350,366,474,472,268,269,283,466,347,261,255,273,355,262,292,259,258,430,252,287,299,298,419,445,495,350,439,307,320,366,363,275,395,272,254,272,303,450,251,288,274,269,372,473,298,444,366,414,271,275,370,252,351,410,315,361,252,357,];
-
-    // The unpacked items of t60_00 after some runtime, it is unpackable in 20 bins??
+    // t60_00
     // let capacity = 1000;
-    // let bin_count = 5;
-    // let mut sizes = vec![419,372,363,355,350,347,320,292,269,366,275,272];
+    // let bin_count = 21;
+    // let mut sizes = vec![273,263,350,366,474,472,268,269,283,466,347,261,255,273,355,262,292,259,258,430,252,287,299,298,419,445,495,350,439,307,320,366,363,275,395,272,254,272,303,450,251,288,274,269,372,473,298,444,366,414,271,275,370,252,351,410,315,361,252,357,];
 
     // u120_00
-    // let capacity = 150;
-    // let bin_count = 48;
-    // let mut sizes = vec![42,69,67,57,93,90,38,36,45,42,33,79,27,57,44,84,86,92,46,38,85,33,82,73,49,70,59,23,57,72,74,69,33,42,28,46,30,64,29,74,41,49,55,98,80,32,25,38,82,30,35,39,57,84,62,50,55,27,30,36,20,78,47,26,45,41,58,98,91,96,73,84,37,93,91,43,73,85,81,79,71,80,76,83,41,78,70,23,42,87,43,84,60,55,49,78,73,62,36,44,94,69,32,96,70,84,58,78,25,80,58,66,83,24,98,60,42,43,43,39];
+    let capacity = 150;
+    let bin_count = 48;
+    let mut sizes = vec![42,69,67,57,93,90,38,36,45,42,33,79,27,57,44,84,86,92,46,38,85,33,82,73,49,70,59,23,57,72,74,69,33,42,28,46,30,64,29,74,41,49,55,98,80,32,25,38,82,30,35,39,57,84,62,50,55,27,30,36,20,78,47,26,45,41,58,98,91,96,73,84,37,93,91,43,73,85,81,79,71,80,76,83,41,78,70,23,42,87,43,84,60,55,49,78,73,62,36,44,94,69,32,96,70,84,58,78,25,80,58,66,83,24,98,60,42,43,43,39];
    
     // u120_00 modified to have a perfect fit
     // let capacity = 150;
@@ -116,18 +111,18 @@ fn main() {
         .post();
 
     // Symmetry breaking constraint, loads of bins are in non-increasing order
-    (1..bin_count)
-        .for_each(|i| {
-            let _ = solver
-                .add_constraint(constraints::binary_less_than_or_equals(loads[i as usize], loads[(i - 1) as usize]))
-                .with_tag(NonZero::new(1).unwrap())
-                .post();
-        });
+    // (1..bin_count)
+    //     .for_each(|i| {
+    //         let _ = solver
+    //             .add_constraint(constraints::binary_less_than_or_equals(loads[i as usize], loads[(i - 1) as usize]))
+    //             .with_tag(NonZero::new(1).unwrap())
+    //             .post();
+    //     });
 
     // Only branch over the bin assignments, not the loads
     let mut brancher = AutonomousSearch::new(
         IndependentVariableValueBrancher::new(
-            InputOrder::new(&bins),
+            Smallest::new(&bins),
             InDomainMin,
     ));
 

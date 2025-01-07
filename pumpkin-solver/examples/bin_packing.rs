@@ -7,7 +7,6 @@ use drcp_format::Format;
 use pumpkin_solver::branching::branchers::autonomous_search::AutonomousSearch;
 use pumpkin_solver::branching::branchers::independent_variable_value_brancher::IndependentVariableValueBrancher;
 use pumpkin_solver::branching::value_selection::InDomainMin;
-use pumpkin_solver::branching::variable_selection::InputOrder;
 use pumpkin_solver::branching::variable_selection::Smallest;
 use pumpkin_solver::constraints;
 use pumpkin_solver::options::SolverOptions;

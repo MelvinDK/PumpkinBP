@@ -1,0 +1,4 @@
+output ["Team = "++format(Team)++";\n","objective = "++format(objective)++";\n"];
+int: objective;
+int: players = 24;
+array [1..players] of int: Team;

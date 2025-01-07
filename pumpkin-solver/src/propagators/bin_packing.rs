@@ -534,7 +534,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             .iter()
             .sum();
 
-        for j in 0..bin_count {
+        for j in 1..=bin_count {
             // Variable setup
             // Items that have bin j in their domain
             let possible_set: Vec<(usize, &ElementVar)> = self.bins
@@ -593,7 +593,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
                     lower_maintenance_reason.push(predicate![bin == j as i32]);
                 });
         
-            context.set_lower_bound(&self.loads[j], packed_sum, PropositionalConjunction::new(lower_maintenance_reason.clone()))?;
+            context.set_lower_bound(&self.loads[j - 1], packed_sum, PropositionalConjunction::new(lower_maintenance_reason.clone()))?;
             
 
 
@@ -612,7 +612,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             let possible_sum = required_sum + candidate_sum;
 
             // The reason is the candidate set Cj
-            context.set_upper_bound(&self.loads[j], possible_sum, PropositionalConjunction::new(candidate_reason.clone()))?;
+            context.set_upper_bound(&self.loads[j - 1], possible_sum, PropositionalConjunction::new(candidate_reason.clone()))?;
             
 
 
@@ -623,7 +623,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             let total_upper_bounds: i32 = self.loads
                 .iter()
                 .enumerate()
-                .filter(|&(idx, _)| idx != j)
+                .filter(|&(idx, _)| idx != j - 1)
                 .map(|(_, load)| context.upper_bound(load))
                 .sum();
             
@@ -631,13 +631,13 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             let lower_coherence_reason: Vec<Predicate> = self.loads
                 .iter()
                 .enumerate()
-                .filter(|&(idx, _)| idx != j)
+                .filter(|&(idx, _)| idx != j - 1)
                 .map(|(_, load)| predicate![load <= context.upper_bound(load)])
                 .collect();
 
             let lower_bound = total_size - total_upper_bounds;
 
-            context.set_lower_bound(&self.loads[j], lower_bound, PropositionalConjunction::new(lower_coherence_reason))?;
+            context.set_lower_bound(&self.loads[j - 1], lower_bound, PropositionalConjunction::new(lower_coherence_reason))?;
         
 
 
@@ -648,7 +648,7 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             let total_lower_bounds: i32 = self.loads
                 .iter()
                 .enumerate()
-                .filter(|&(idx, _)| idx != j)
+                .filter(|&(idx, _)| idx != j - 1)
                 .map(|(_, load)| context.lower_bound(load))
                 .sum();
             
@@ -656,13 +656,13 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             let upper_coherence_reason: Vec<Predicate> = self.loads
                 .iter()
                 .enumerate()
-                .filter(|&(idx, _)| idx != j)
+                .filter(|&(idx, _)| idx != j - 1)
                 .map(|(_, load)| predicate![load >= context.lower_bound(load)])
                 .collect();
 
             let upper_bound = total_size - total_lower_bounds;
 
-            context.set_upper_bound(&self.loads[j], upper_bound, PropositionalConjunction::new(upper_coherence_reason))?;
+            context.set_upper_bound(&self.loads[j - 1], upper_bound, PropositionalConjunction::new(upper_coherence_reason))?;
         
 
 
@@ -672,10 +672,10 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
 
             // The reason is the upper bound on the load of bin j and all items packed in it
             let mut single_elimination_reason = lower_maintenance_reason.clone();
-            single_elimination_reason.push(predicate![self.loads[j] <= context.upper_bound(&self.loads[j])]);
+            single_elimination_reason.push(predicate![self.loads[j - 1] <= context.upper_bound(&self.loads[j - 1])]);
             
             // Remaining space in bin j is its upper bound - the sizes of items already packed in bin j
-            let remaining_space = context.upper_bound(&self.loads[j]) - packed_sum;
+            let remaining_space = context.upper_bound(&self.loads[j - 1]) - packed_sum;
 
             // Collect every item that can no longer be packed in bin j
             let to_remove: Vec<(usize, &ElementVar)> = candidate_set
@@ -719,14 +719,14 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
 
             // The reason is the lower bound on the load of bin j and the candidate items in Cj
             let mut single_commitment_reason = candidate_reason.clone();
-            single_commitment_reason.push(predicate![self.loads[j] >= context.lower_bound(&self.loads[j])]);
+            single_commitment_reason.push(predicate![self.loads[j - 1] >= context.lower_bound(&self.loads[j - 1])]);
 
             // Set of indices to be removed
             let mut remove_set = HashSet::new();
 
             for c in 0..candidate_set.len() {
                 let (i, candidate) = candidate_set[c];
-                if total_size - self.sizes[i] < context.lower_bound(&self.loads[j]) {
+                if total_size - self.sizes[i] < context.lower_bound(&self.loads[j - 1]) {
                     // Assign bin allocation j to item i
                     context.post_predicate(predicate![candidate == j as i32], PropositionalConjunction::new(single_commitment_reason.clone()))?;
 
@@ -765,12 +765,12 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
                 .sum();
 
             // If nosum returns true, prune
-            let (prune, _, _) = nosum(&candidate_sizes, context.lower_bound(&self.loads[j]) - packed_sum, context.upper_bound(&self.loads[j]) - packed_sum);
+            let (prune, _, _) = nosum(&candidate_sizes, context.lower_bound(&self.loads[j - 1]) - packed_sum, context.upper_bound(&self.loads[j - 1]) - packed_sum);
             if prune {
                 // The reason is the bounds on the load of the bin and the candidate set
                 let mut nosum_prune_reason = candidate_reason.clone();
-                nosum_prune_reason.push(predicate![self.loads[j] >= context.lower_bound(&self.loads[j])]);
-                nosum_prune_reason.push(predicate![self.loads[j] <= context.upper_bound(&self.loads[j])]);
+                nosum_prune_reason.push(predicate![self.loads[j - 1] >= context.lower_bound(&self.loads[j - 1])]);
+                nosum_prune_reason.push(predicate![self.loads[j - 1] <= context.upper_bound(&self.loads[j - 1])]);
 
                 return Err(Inconsistency::Conflict(PropositionalConjunction::new(nosum_prune_reason)));
             }
@@ -780,23 +780,23 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
 
             // NoSum Load Bound Tightening
             // If nosum returns true with only lower bound inputs, adjust the lower bound
-            let (adjust, _, b) = nosum(&candidate_sizes, context.lower_bound(&self.loads[j]) - packed_sum, context.lower_bound(&self.loads[j]) - packed_sum);
+            let (adjust, _, b) = nosum(&candidate_sizes, context.lower_bound(&self.loads[j - 1]) - packed_sum, context.lower_bound(&self.loads[j - 1]) - packed_sum);
             if adjust {
                 // The reason is the lower bound on the load of the bin and the candidate set
                 let mut nosum_lower_bound_reason = candidate_reason.clone();
-                nosum_lower_bound_reason.push(predicate![self.loads[j] >= context.lower_bound(&self.loads[j])]);
+                nosum_lower_bound_reason.push(predicate![self.loads[j - 1] >= context.lower_bound(&self.loads[j - 1])]);
 
-                context.set_lower_bound(&self.loads[j], packed_sum + b, PropositionalConjunction::new(nosum_lower_bound_reason))?;
+                context.set_lower_bound(&self.loads[j - 1], packed_sum + b, PropositionalConjunction::new(nosum_lower_bound_reason))?;
             }
 
             // If nosum returns true with only upper bound inputs, adjust the upper bound
-            let (adjust, a, _) = nosum(&candidate_sizes, context.upper_bound(&self.loads[j]) - packed_sum, context.upper_bound(&self.loads[j]) - packed_sum);
+            let (adjust, a, _) = nosum(&candidate_sizes, context.upper_bound(&self.loads[j - 1]) - packed_sum, context.upper_bound(&self.loads[j - 1]) - packed_sum);
             if adjust {
                 // The reason is the upper bound on the load of the bin and the candidate set
                 let mut nosum_upper_bound_reason = candidate_reason.clone();
-                nosum_upper_bound_reason.push(predicate![self.loads[j] <= context.upper_bound(&self.loads[j])]);
+                nosum_upper_bound_reason.push(predicate![self.loads[j - 1] <= context.upper_bound(&self.loads[j - 1])]);
 
-                context.set_upper_bound(&self.loads[j], packed_sum + a, PropositionalConjunction::new(nosum_upper_bound_reason))?;
+                context.set_upper_bound(&self.loads[j - 1], packed_sum + a, PropositionalConjunction::new(nosum_upper_bound_reason))?;
             }
 
         
@@ -813,24 +813,24 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
                     .collect();
 
                 // If item has to be eliminated
-                let (eliminate, _, _) = nosum(&current_sizes, context.lower_bound(&self.loads[j]) - packed_sum - candidate_sizes[c], context.upper_bound(&self.loads[j]) - packed_sum - candidate_sizes[c]);
+                let (eliminate, _, _) = nosum(&current_sizes, context.lower_bound(&self.loads[j - 1]) - packed_sum - candidate_sizes[c], context.upper_bound(&self.loads[j - 1]) - packed_sum - candidate_sizes[c]);
                 if eliminate {
                     // The reason is the bounds on the load of the bin and the candidate set
                     let mut nosum_elimination_reason = candidate_reason.clone();
-                    nosum_elimination_reason.push(predicate![self.loads[j] >= context.lower_bound(&self.loads[j])]);
-                    nosum_elimination_reason.push(predicate![self.loads[j] <= context.upper_bound(&self.loads[j])]);
+                    nosum_elimination_reason.push(predicate![self.loads[j - 1] >= context.lower_bound(&self.loads[j - 1])]);
+                    nosum_elimination_reason.push(predicate![self.loads[j - 1] <= context.upper_bound(&self.loads[j - 1])]);
 
                     // Remove bin j from candidate item domain
                     context.remove(candidate_set[c].1, j as i32, PropositionalConjunction::new(nosum_elimination_reason))?;
                 }
                 
                 // If item has to be committed
-                let (commit, _, _) = nosum(&current_sizes, context.lower_bound(&self.loads[j]) - packed_sum, context.upper_bound(&self.loads[j]) - packed_sum);
+                let (commit, _, _) = nosum(&current_sizes, context.lower_bound(&self.loads[j - 1]) - packed_sum, context.upper_bound(&self.loads[j - 1]) - packed_sum);
                 if commit {
                     // The reason is the bounds on the load of the bin and the candidate set
                     let mut nosum_commitment_reason = candidate_reason.clone();
-                    nosum_commitment_reason.push(predicate![self.loads[j] >= context.lower_bound(&self.loads[j])]);
-                    nosum_commitment_reason.push(predicate![self.loads[j] <= context.upper_bound(&self.loads[j])]);
+                    nosum_commitment_reason.push(predicate![self.loads[j - 1] >= context.lower_bound(&self.loads[j - 1])]);
+                    nosum_commitment_reason.push(predicate![self.loads[j - 1] <= context.upper_bound(&self.loads[j - 1])]);
 
                     // Assign bin j to candidate item domain
                     let candidate = candidate_set[c].1;
@@ -842,15 +842,15 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
         // WRITE DOWN WHAT NOSUM ITEM COMMITMENT AND ELIMINATION DOESN'T KEEP TRACK OF ANYMORE
 
         // println!();
-        // for j in 0..bin_count {
+        // for j in 1..=bin_count {
         //     let bin1load = self.bins
         //         .iter()
         //         .enumerate()
         //         .filter(|(_, b)| context.is_fixed(*b) && context.lower_bound(*b) == j as i32)
         //         .map(|(i, _)| self.sizes[i])
         //         .sum::<i32>();
-        //     let lowerbound = context.lower_bound(&self.loads[j]);
-        //     let upperbound = context.upper_bound(&self.loads[j]);
+        //     let lowerbound = context.lower_bound(&self.loads[j - 1]);
+        //     let upperbound = context.upper_bound(&self.loads[j - 1]);
         //     print!("{j}: {bin1load}               ({lowerbound} - {upperbound})          ");
         //     for i in 0..self.bins.len() {
         //         if context.contains(&self.bins[i], j as i32) {

@@ -8,6 +8,7 @@ use crate::engine::propagation::LocalId;
 use crate::engine::propagation::PropagationContextMut;
 use crate::engine::propagation::Propagator;
 use crate::engine::propagation::PropagatorInitialisationContext;
+use crate::engine::reason::Reason;
 use crate::engine::DomainEvents;
 use crate::predicates::Predicate;
 use crate::predicates::PropositionalConjunction;
@@ -459,6 +460,44 @@ fn nosum(
     }
 
     (sum_a < lower_bound, sum_a + sum_c, sum_b)
+}
+
+// Returns the naive explanation for all domains
+fn naive_explanations<ElementVar: IntegerVariable>(
+    loads: Box<[ElementVar]>,
+    bins: Box<[ElementVar]>,
+    context: PropagationContextMut
+) -> impl Into<Reason> {
+    let mut lower_loads: Vec<Predicate> = loads
+        .iter()
+        .map(|l| predicate![l >= context.lower_bound(l)])
+        .collect();
+
+    let mut upper_loads: Vec<Predicate> = loads
+        .iter()
+        .map(|l| predicate![l <= context.upper_bound(l)])
+        .collect();
+
+    let mut reason: Vec<Predicate> = Vec::new();
+    
+    bins
+        .iter()
+        .for_each(|b| {
+            let lower = context.lower_bound(b);
+            reason.push(predicate![b >= lower]);
+            let upper = context.upper_bound(b);
+            reason.push(predicate![b <= upper]);
+            for i in lower+1..upper {
+                if !context.contains(b, i) {
+                    reason.push(predicate![b != i]);
+                }
+            }
+        });
+
+    reason.append(&mut lower_loads);
+    reason.append(&mut upper_loads);
+
+    return PropositionalConjunction::new(reason)
 }
 
 

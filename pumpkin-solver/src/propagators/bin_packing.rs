@@ -8,7 +8,6 @@ use crate::engine::propagation::LocalId;
 use crate::engine::propagation::PropagationContextMut;
 use crate::engine::propagation::Propagator;
 use crate::engine::propagation::PropagatorInitialisationContext;
-use crate::engine::reason::Reason;
 use crate::engine::DomainEvents;
 use crate::predicates::Predicate;
 use crate::predicates::PropositionalConjunction;
@@ -78,6 +77,9 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
         &self,
         mut context: PropagationContextMut,
     ) -> PropagationStatusCP {
+        // Naive explanations?
+        let naive = false;
+
         // Amount of bins
         let bin_count = self.loads.len();
 
@@ -145,8 +147,12 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
                     lower_maintenance_reason.push(predicate![bin == j as i32]);
                 });
         
-            context.set_lower_bound(&self.loads[j - 1], packed_sum, PropositionalConjunction::new(lower_maintenance_reason.clone()))?;
-            
+            if naive {
+                context.set_lower_bound(&self.loads[j - 1], packed_sum, naive_explanations(&self.loads, &self.bins, &context))?;
+            } else {
+                context.set_lower_bound(&self.loads[j - 1], packed_sum, PropositionalConjunction::new(lower_maintenance_reason.clone()))?;
+            }
+                
 
 
 
@@ -164,7 +170,12 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             let possible_sum = required_sum + candidate_sum;
 
             // The reason is the candidate set Cj
-            context.set_upper_bound(&self.loads[j - 1], possible_sum, PropositionalConjunction::new(candidate_reason.clone()))?;
+            
+            if naive {
+                context.set_upper_bound(&self.loads[j - 1], possible_sum, naive_explanations(&self.loads, &self.bins, &context))?;
+            } else {
+                context.set_upper_bound(&self.loads[j - 1], possible_sum, PropositionalConjunction::new(candidate_reason.clone()))?;
+            }
             
 
 
@@ -189,7 +200,11 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
 
             let lower_bound = total_size - total_upper_bounds;
 
-            context.set_lower_bound(&self.loads[j - 1], lower_bound, PropositionalConjunction::new(lower_coherence_reason))?;
+            if naive {
+                context.set_lower_bound(&self.loads[j - 1], lower_bound, naive_explanations(&self.loads, &self.bins, &context))?;
+            } else {
+                context.set_lower_bound(&self.loads[j - 1], lower_bound, PropositionalConjunction::new(lower_coherence_reason))?;
+            }
         
 
 
@@ -214,7 +229,11 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
 
             let upper_bound = total_size - total_lower_bounds;
 
-            context.set_upper_bound(&self.loads[j - 1], upper_bound, PropositionalConjunction::new(upper_coherence_reason))?;
+            if naive {
+                context.set_upper_bound(&self.loads[j - 1], upper_bound, naive_explanations(&self.loads, &self.bins, &context))?;
+            } else {
+                context.set_upper_bound(&self.loads[j - 1], upper_bound, PropositionalConjunction::new(upper_coherence_reason))?;
+            }
         
 
 
@@ -243,7 +262,12 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
             for (idx, bin) in to_remove.iter() {
                 // Remove bin allocation j from the item's domain
                 let bin = *bin;
-                context.remove(bin, j as i32, PropositionalConjunction::new(single_elimination_reason.clone()))?;
+
+                if naive {
+                    context.remove(bin, j as i32, naive_explanations(&self.loads, &self.bins, &context))?;
+                } else {
+                    context.remove(bin, j as i32, PropositionalConjunction::new(single_elimination_reason.clone()))?;
+                }
 
                 // Update the reason for the candidate set
                 candidate_reason.push(predicate![bin != j as i32]);
@@ -280,7 +304,11 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
                 let (i, candidate) = candidate_set[c];
                 if total_size - self.sizes[i] < context.lower_bound(&self.loads[j - 1]) {
                     // Assign bin allocation j to item i
-                    context.post_predicate(predicate![candidate == j as i32], PropositionalConjunction::new(single_commitment_reason.clone()))?;
+                    if naive {
+                        context.post_predicate(predicate![candidate == j as i32], naive_explanations(&self.loads, &self.bins, &context))?;
+                    } else {
+                        context.post_predicate(predicate![candidate == j as i32], PropositionalConjunction::new(single_commitment_reason.clone()))?;
+                    }
 
                     // Update the reason for the candidate set
                     candidate_reason.push(predicate![candidate == j as i32]);
@@ -324,7 +352,11 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
                 nosum_prune_reason.push(predicate![self.loads[j - 1] >= context.lower_bound(&self.loads[j - 1])]);
                 nosum_prune_reason.push(predicate![self.loads[j - 1] <= context.upper_bound(&self.loads[j - 1])]);
 
-                return Err(Inconsistency::Conflict(PropositionalConjunction::new(nosum_prune_reason)));
+                if naive {
+                    return Err(Inconsistency::Conflict(naive_explanations(&self.loads, &self.bins, &context)));
+                } else {
+                    return Err(Inconsistency::Conflict(PropositionalConjunction::new(nosum_prune_reason)));
+                }
             }
 
 
@@ -338,7 +370,11 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
                 let mut nosum_lower_bound_reason = candidate_reason.clone();
                 nosum_lower_bound_reason.push(predicate![self.loads[j - 1] >= context.lower_bound(&self.loads[j - 1])]);
 
-                context.set_lower_bound(&self.loads[j - 1], packed_sum + b, PropositionalConjunction::new(nosum_lower_bound_reason))?;
+                if naive {
+                    context.set_lower_bound(&self.loads[j - 1], packed_sum + b, naive_explanations(&self.loads, &self.bins, &context))?;
+                } else {
+                    context.set_lower_bound(&self.loads[j - 1], packed_sum + b, PropositionalConjunction::new(nosum_lower_bound_reason))?;
+                }
             }
 
             // If nosum returns true with only upper bound inputs, adjust the upper bound
@@ -348,7 +384,11 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
                 let mut nosum_upper_bound_reason = candidate_reason.clone();
                 nosum_upper_bound_reason.push(predicate![self.loads[j - 1] <= context.upper_bound(&self.loads[j - 1])]);
 
-                context.set_upper_bound(&self.loads[j - 1], packed_sum + a, PropositionalConjunction::new(nosum_upper_bound_reason))?;
+                if naive {
+                    context.set_upper_bound(&self.loads[j - 1], packed_sum + a, naive_explanations(&self.loads, &self.bins, &context))?;
+                } else {
+                    context.set_upper_bound(&self.loads[j - 1], packed_sum + a, PropositionalConjunction::new(nosum_upper_bound_reason))?;
+                }
             }
 
         
@@ -373,7 +413,11 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
                     nosum_elimination_reason.push(predicate![self.loads[j - 1] <= context.upper_bound(&self.loads[j - 1])]);
 
                     // Remove bin j from candidate item domain
-                    context.remove(candidate_set[c].1, j as i32, PropositionalConjunction::new(nosum_elimination_reason))?;
+                    if naive {
+                        context.remove(candidate_set[c].1, j as i32, naive_explanations(&self.loads, &self.bins, &context))?;
+                    } else {
+                        context.remove(candidate_set[c].1, j as i32, PropositionalConjunction::new(nosum_elimination_reason))?;
+                    }
                 }
                 
                 // If item has to be committed
@@ -386,7 +430,12 @@ impl<ElementVar: IntegerVariable + 'static> Propagator
 
                     // Assign bin j to candidate item domain
                     let candidate = candidate_set[c].1;
-                    context.post_predicate(predicate![candidate == j as i32], PropositionalConjunction::new(nosum_commitment_reason))?;
+                    if naive {
+                        context.post_predicate(predicate![candidate == j as i32], naive_explanations(&self.loads, &self.bins, &context))?;
+                    } else {
+                        context.post_predicate(predicate![candidate == j as i32], PropositionalConjunction::new(nosum_commitment_reason))?;
+                    }
+
                 }
             }
         }
@@ -464,10 +513,10 @@ fn nosum(
 
 // Returns the naive explanation for all domains
 fn naive_explanations<ElementVar: IntegerVariable>(
-    loads: Box<[ElementVar]>,
-    bins: Box<[ElementVar]>,
-    context: PropagationContextMut
-) -> impl Into<Reason> {
+    loads: &Box<[ElementVar]>,
+    bins: &Box<[ElementVar]>,
+    context: &PropagationContextMut
+) -> PropositionalConjunction {
     let mut lower_loads: Vec<Predicate> = loads
         .iter()
         .map(|l| predicate![l >= context.lower_bound(l)])
